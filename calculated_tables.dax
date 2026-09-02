@@ -1,0 +1,168 @@
+// ============================================================================
+// CALCULATED TABLES
+//
+// Nable_PowerBI_Input.xlsx supplies 12 sheets. The measure set references 15
+// tables, so 10 of them are built here from the loaded sheets. Nothing is
+// hardcoded — every value is read back out of Partner_Segmentation,
+// ARR_Bridge or Scenario_Comparison.
+//
+// Create each one with Modeling > New table, in this order.
+//
+// Three loaded tables are renamed first (right-click > Rename):
+//   Scenario_Table         ->  Scenario
+//   GTM_Capacity_Monthly   ->  Capacity Monthly
+//   Assumptions_Register   ->  Assumptions
+//
+// NOTE: the measure-holder table is called _Measures, not Measures.
+// Power BI reserves "Measures" as a table name and rejects it.
+// ============================================================================
+
+
+// ---------- 1. measure holder (hide its Value column) ----------
+_Measures = { 1 }
+
+
+// ---------- 2/3. FY2025 and FY2026 slices of the ARR bridge ----------
+'ARR Bridge FY2025' = FILTER ( ARR_Bridge, ARR_Bridge[Period] = "FY2025A" )
+
+'ARR Bridge FY2026' = FILTER ( ARR_Bridge, ARR_Bridge[Period] = "FY2026E" )
+
+
+// ---------- 4. Gross New Split ----------
+// FY2025 gross new ARR by motion. Expansion 62.66 / new logo 22.654.
+'Gross New Split' =
+VAR Exp = CALCULATE ( SUM ( ARR_Bridge[Value] ), ARR_Bridge[Period] = "FY2025A", ARR_Bridge[Category] = "Expansion" )
+VAR NL  = CALCULATE ( SUM ( ARR_Bridge[Value] ), ARR_Bridge[Period] = "FY2025A", ARR_Bridge[Category] = "New logo" )
+VAR Tot = Exp + NL
+RETURN
+    UNION (
+        ROW ( "Order", 1, "Motion", "Expansion & upsell", "Value", Exp, "Share", DIVIDE ( Exp, Tot ) ),
+        ROW ( "Order", 2, "Motion", "New logo",           "Value", NL,  "Share", DIVIDE ( NL,  Tot ) )
+    )
+
+
+// ---------- 5. Growth by Tier ----------
+// Share of the FY2025 ARR increase by partner cohort. 94.4% / 5.6%.
+'Growth by Tier' =
+VAR AboveVal = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2025A", Partner_Segmentation[Cohort] = ">$50K partners",  Partner_Segmentation[Metric] = "ARR change vs prior year" )
+VAR TailVal  = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2025A", Partner_Segmentation[Cohort] = "<$50K long tail", Partner_Segmentation[Metric] = "ARR change vs prior year" )
+VAR AboveShr = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2025A", Partner_Segmentation[Cohort] = ">$50K partners",  Partner_Segmentation[Metric] = "Share of FY2025 ARR growth" )
+VAR TailShr  = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2025A", Partner_Segmentation[Cohort] = "<$50K long tail", Partner_Segmentation[Metric] = "Share of FY2025 ARR growth" )
+RETURN
+    UNION (
+        ROW ( "Order", 1, "Cohort", "Partners >$50K",  "Value", AboveVal, "Share", AboveShr ),
+        ROW ( "Order", 2, "Cohort", "Long tail <$50K", "Value", TailVal,  "Share", TailShr )
+    )
+
+
+// ---------- 6. Partner Mix ----------
+// Cohort ARR at FY2024A, FY2025A and Q2 FY2026A.
+'Partner Mix' =
+SELECTCOLUMNS (
+    FILTER ( Partner_Segmentation, Partner_Segmentation[Metric] = "ARR" ),
+    "Order",  Partner_Segmentation[Order],
+    "Period", Partner_Segmentation[Period],
+    "Cohort", IF ( Partner_Segmentation[Cohort] = ">$50K partners", "Partners >$50K", "Long tail <$50K" ),
+    "ARR",    Partner_Segmentation[Value]
+)
+// Sort Partner Mix[Period] by ITSELF, not by [Order]. [Order] carries a
+// distinct value per source row, which splits each period into two separate
+// categories on any axis.
+
+
+// ---------- 7. Long Tail Change ----------
+// FY2025A +3.223 ; Q2 FY2026A -9.018.
+'Long Tail Change' =
+SELECTCOLUMNS (
+    FILTER (
+        Partner_Segmentation,
+        Partner_Segmentation[Cohort] = "<$50K long tail"
+            && ( Partner_Segmentation[Metric] = "ARR change vs prior year"
+              || Partner_Segmentation[Metric] = "ARR change vs prior period" )
+    ),
+    "Order",  Partner_Segmentation[Order],
+    "Period", Partner_Segmentation[Period],
+    "Value",  Partner_Segmentation[Value]
+)
+
+
+// ---------- 8. Capacity by Scenario ----------
+'Capacity by Scenario' =
+SELECTCOLUMNS (
+    FILTER (
+        Scenario_Comparison,
+        Scenario_Comparison[Metric] IN { "Required gross new ARR at guidance mid", "Modeled sales capacity" }
+    ),
+    "ScenarioOrder", Scenario_Comparison[ScenarioOrder],
+    "Scenario",      Scenario_Comparison[Scenario],
+    "Metric",        IF ( Scenario_Comparison[Metric] = "Modeled sales capacity", "Modeled capacity", "Required gross new ARR" ),
+    "Value",         Scenario_Comparison[Value]
+)
+
+
+// ---------- 9. Coverage by Scenario ----------
+'Coverage by Scenario' =
+SELECTCOLUMNS (
+    FILTER ( Scenario_Comparison, Scenario_Comparison[Metric] = "Capacity coverage" ),
+    "ScenarioOrder", Scenario_Comparison[ScenarioOrder],
+    "Scenario",      Scenario_Comparison[Scenario],
+    "Coverage",      Scenario_Comparison[Value]
+)
+
+
+// ---------- 10. Plan Comparison ----------
+'Plan Comparison' =
+DATATABLE (
+    "Order", INTEGER,
+    "Item",  STRING,
+    { { 1, "Required gross new ARR" }, { 2, "Modeled capacity" } }
+)
+
+
+// ---------- 11. Cohort Summary ----------
+// FY2024 vs FY2025 by cohort. Columns are pre-formatted TEXT on purpose:
+// three rows are $mm at one decimal, one row is a partner count. A table
+// visual allows only one format string per column, so FORMAT() is applied
+// per row and [Order] carries the sort.
+'Cohort Summary' =
+VAR P24 = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2024A", Partner_Segmentation[Cohort] = ">$50K partners",  Partner_Segmentation[Metric] = "ARR" )
+VAR P25 = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2025A", Partner_Segmentation[Cohort] = ">$50K partners",  Partner_Segmentation[Metric] = "ARR" )
+VAR PY  = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2025A", Partner_Segmentation[Cohort] = ">$50K partners",  Partner_Segmentation[Metric] = "YoY ARR growth" )
+VAR L24 = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2024A", Partner_Segmentation[Cohort] = "<$50K long tail", Partner_Segmentation[Metric] = "ARR" )
+VAR L25 = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2025A", Partner_Segmentation[Cohort] = "<$50K long tail", Partner_Segmentation[Metric] = "ARR" )
+VAR LY  = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2025A", Partner_Segmentation[Cohort] = "<$50K long tail", Partner_Segmentation[Metric] = "YoY ARR growth" )
+VAR C24 = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2024A", Partner_Segmentation[Cohort] = ">$50K partners",  Partner_Segmentation[Metric] = "Partner count" )
+VAR C25 = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2025A", Partner_Segmentation[Cohort] = ">$50K partners",  Partner_Segmentation[Metric] = "Partner count" )
+VAR CY  = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2025A", Partner_Segmentation[Cohort] = ">$50K partners",  Partner_Segmentation[Metric] = "YoY partner count growth" )
+VAR T24 = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2024A", Partner_Segmentation[Cohort] = "Total",           Partner_Segmentation[Metric] = "Total ARR" )
+VAR T25 = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2025A", Partner_Segmentation[Cohort] = "Total",           Partner_Segmentation[Metric] = "Total ARR" )
+VAR TY  = CALCULATE ( MAX ( Partner_Segmentation[Value] ), Partner_Segmentation[Period] = "FY2025A", Partner_Segmentation[Cohort] = "Total",           Partner_Segmentation[Metric] = "YoY ARR growth" )
+RETURN
+    UNION (
+        ROW ( "Order", 1, "Cohort", "Partners >$50K",      "FY2024", FORMAT ( P24, "#,##0.0" ), "FY2025", FORMAT ( P25, "#,##0.0" ), "YoY", FORMAT ( PY, "+0.0%;-0.0%" ) ),
+        ROW ( "Order", 2, "Cohort", "Long tail <$50K",     "FY2024", FORMAT ( L24, "#,##0.0" ), "FY2025", FORMAT ( L25, "#,##0.0" ), "YoY", FORMAT ( LY, "+0.0%;-0.0%" ) ),
+        ROW ( "Order", 3, "Cohort", ">$50K partner count", "FY2024", FORMAT ( C24, "#,##0"   ), "FY2025", FORMAT ( C25, "#,##0"   ), "YoY", FORMAT ( CY, "+0.0%;-0.0%" ) ),
+        ROW ( "Order", 4, "Cohort", "Total ARR",           "FY2024", FORMAT ( T24, "#,##0.0" ), "FY2025", FORMAT ( T25, "#,##0.0" ), "YoY", FORMAT ( TY, "+0.0%;-0.0%" ) )
+    )
+
+
+// ============================================================================
+// SORT-BY COLUMNS
+//   Scenario[Scenario]              by  [ScenarioOrder]
+//   Coverage by Scenario[Scenario]  by  [ScenarioOrder]
+//   Capacity by Scenario[Scenario]  by  [ScenarioOrder]
+//   ARR Bridge FY2025[Step]         by  [Order]
+//   Gross New Split[Motion]         by  [Order]
+//   Growth by Tier[Cohort]          by  [Order]
+//   Long Tail Change[Period]        by  [Order]
+//   Plan Comparison[Item]           by  [Order]
+//   Capacity Monthly[MonthLabel]    by  [Month]
+//   Cohort Summary[Cohort]          by  [Order]
+//   Partner Mix[Period]             by  ITSELF  (see note above)
+//
+// RELATIONSHIPS: none. Delete any Power BI auto-detects on load.
+// The disconnected Scenario table is what replaces the Excel switch at
+// Assumptions!B6, which stops being interactive once the workbook is imported.
+//
+// HIDE: Anchors, _Measures.
+// ============================================================================

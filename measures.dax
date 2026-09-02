@@ -1,0 +1,254 @@
+// N-ABLE GTM CAPACITY MODEL — ALL 59 MEASURES IN ONE GO
+//
+// HOW TO USE (Power BI Desktop, DAX query view — the table icon on the left rail):
+//   1. Load Nable_PowerBI_Input.xlsx first (Get Data > Excel > select all sheets > Load)
+//   2. Modeling > New table  ->  Measures = {1}      (then hide its Value column)
+//   3. Open DAX query view, paste this ENTIRE file, then click
+//      'Update model: add new measures' at the top of the DEFINE block.
+//      All 59 measures land on the Measures table at once.
+//   4. Format strings are listed at the bottom of this file — set them in
+//      Measure tools > Format after the measures exist.
+//
+// The Scenario table must stay DISCONNECTED — no relationships at all.
+// That is what replaces the Excel switch at Assumptions!B6.
+
+DEFINE
+
+    // ---------- 01 Scenario selection ----------
+    // Active scenario. Replaces the Excel switch at Assumptions!B6, which is not interactive after import.
+    MEASURE '_Measures'[Sel Scenario] = SELECTEDVALUE ( Scenario[Scenario], "Base" )
+    // Gross revenue retention for the selected scenario. Analyst assumption.
+    MEASURE '_Measures'[Sel GRR] =
+        VAR CurrentScenario = SELECTEDVALUE ( Scenario[Scenario], "Base" )
+        RETURN
+            CALCULATE ( MAX ( Scenario[GRR] ), ALL ( Scenario ), Scenario[Scenario] = CurrentScenario )
+    // New logo ARR growth vs FY2025. Analyst assumption.
+    MEASURE '_Measures'[Sel New Logo Growth] =
+        VAR CurrentScenario = SELECTEDVALUE ( Scenario[Scenario], "Base" )
+        RETURN
+            CALCULATE ( MAX ( Scenario[NewLogoGrowth] ), ALL ( Scenario ), Scenario[Scenario] = CurrentScenario )
+    // Expansion rate uplift vs FY2025. Analyst assumption.
+    MEASURE '_Measures'[Sel Expansion Uplift] =
+        VAR CurrentScenario = SELECTEDVALUE ( Scenario[Scenario], "Base" )
+        RETURN
+            CALCULATE ( MAX ( Scenario[ExpansionUplift] ), ALL ( Scenario ), Scenario[Scenario] = CurrentScenario )
+    // FX impact on FY2026 ending ARR. Analyst assumption.
+    MEASURE '_Measures'[Sel FX] =
+        VAR CurrentScenario = SELECTEDVALUE ( Scenario[Scenario], "Base" )
+        RETURN
+            CALCULATE ( MAX ( Scenario[FXImpact] ), ALL ( Scenario ), Scenario[Scenario] = CurrentScenario )
+    // FY2026 quota attainment. Analyst assumption.
+    MEASURE '_Measures'[Sel Attainment] =
+        VAR CurrentScenario = SELECTEDVALUE ( Scenario[Scenario], "Base" )
+        RETURN
+            CALCULATE ( MAX ( Scenario[QuotaAttainment] ), ALL ( Scenario ), Scenario[Scenario] = CurrentScenario )
+
+    // ---------- 02 Anchors ----------
+    // FY2025 ending ARR. REPORTED.
+    MEASURE '_Measures'[Beginning ARR] = CALCULATE ( MAX ( Anchors[Value] ), ALL ( Anchors ), Anchors[Key] = "BeginningARR" )
+    // FY2026 original guidance low. REPORTED.
+    MEASURE '_Measures'[Guidance Low] = CALCULATE ( MAX ( Anchors[Value] ), ALL ( Anchors ), Anchors[Key] = "GuidanceLow" )
+    // FY2026 original guidance high. REPORTED.
+    MEASURE '_Measures'[Guidance High] = CALCULATE ( MAX ( Anchors[Value] ), ALL ( Anchors ), Anchors[Key] = "GuidanceHigh" )
+    // Midpoint of the reported guidance band. DERIVED.
+    MEASURE '_Measures'[Guidance Mid] = CALCULATE ( MAX ( Anchors[Value] ), ALL ( Anchors ), Anchors[Key] = "GuidanceMid" )
+    // Revised guidance low, 6 Aug 2026. REPORTED.
+    MEASURE '_Measures'[Revised Guidance Low] = CALCULATE ( MAX ( Anchors[Value] ), ALL ( Anchors ), Anchors[Key] = "RevisedGuidanceLow" )
+    // FY2025 expansion as % of beginning ARR. DERIVED.
+    MEASURE '_Measures'[Expansion Rate FY2025] = CALCULATE ( MAX ( Anchors[Value] ), ALL ( Anchors ), Anchors[Key] = "ExpansionRateFY2025" )
+    // FY2025 new logo ARR. DERIVED.
+    MEASURE '_Measures'[New Logo ARR FY2025] = CALCULATE ( MAX ( Anchors[Value] ), ALL ( Anchors ), Anchors[Key] = "NewLogoARRFY2025" )
+    // FY2025 gross new ARR. DERIVED.
+    MEASURE '_Measures'[Gross New ARR FY2025] = CALCULATE ( MAX ( Anchors[Value] ), ALL ( Anchors ), Anchors[Key] = "GrossNewARRFY2025" )
+    // FY2026 quota per fully-ramped rep. MODELED.
+    MEASURE '_Measures'[Quota per Ramped QCR] = CALCULATE ( MAX ( Anchors[Value] ), ALL ( Anchors ), Anchors[Key] = "QuotaPerRampedQCR" )
+    // Required qualified pipeline at the coverage assumption. MODELED.
+    MEASURE '_Measures'[Required Pipeline] = [Required Gross New ARR] * CALCULATE ( MAX ( Anchors[Value] ), ALL ( Anchors ), Anchors[Key] = "PipelineCoverage" )
+
+    // ---------- 03 Capacity ----------
+    // Average ramped-equivalent QCR-years fielded. Identical across scenarios: one hiring plan. MODELED.
+    MEASURE '_Measures'[Avg Ramped FTE] = CALCULATE ( AVERAGE ( 'Capacity Monthly'[RampedEquivalentFTE] ), ALL ( 'Capacity Monthly' ) )
+    // Quota per ramped rep multiplied by scenario quota attainment. MODELED.
+    MEASURE '_Measures'[Productivity per Ramped QCR] = [Quota per Ramped QCR] * [Sel Attainment]
+    // Gross new ARR required to reach the guidance midpoint under the scenario GRR and FX. MODELED.
+    MEASURE '_Measures'[Required Gross New ARR] =
+        VAR Beg = [Beginning ARR]
+        VAR Target = [Guidance Mid] - [Sel FX]
+        VAR Churn = Beg * ( 1 - [Sel GRR] )
+        RETURN
+            Target - Beg + Churn
+    // Gross new ARR the modeled 96-hire plan can field. MODELED, not a disclosed company plan.
+    MEASURE '_Measures'[Modeled Capacity] = [Avg Ramped FTE] * [Productivity per Ramped QCR]
+    // Negative = shortfall against the plan. MODELED.
+    MEASURE '_Measures'[Capacity Gap] = [Modeled Capacity] - [Required Gross New ARR]
+    // Modeled capacity as a share of the requirement. MODELED.
+    MEASURE '_Measures'[Capacity Coverage] = DIVIDE ( [Modeled Capacity], [Required Gross New ARR] )
+    // Ramped-equivalent rep-years the plan needs. MODELED.
+    MEASURE '_Measures'[Required QCR Years] = DIVIDE ( [Required Gross New ARR], [Productivity per Ramped QCR] )
+    // Extra ramped reps needed in place on 1 January. Negative = surplus. MODELED.
+    MEASURE '_Measures'[Additional Ramped Reps] = [Required QCR Years] - [Avg Ramped FTE]
+    // Per-rep uplift that would close the gap without hiring. MODELED.
+    MEASURE '_Measures'[Productivity Uplift Required] = DIVIDE ( [Required Gross New ARR], [Modeled Capacity] ) - 1
+
+    // ---------- 04 Forward ARR ----------
+    // MODELED.
+    MEASURE '_Measures'[Scenario Churn] = - [Beginning ARR] * ( 1 - [Sel GRR] )
+    // FY2025 expansion rate plus the scenario uplift. MODELED.
+    MEASURE '_Measures'[Scenario Expansion] = [Beginning ARR] * ( [Expansion Rate FY2025] + [Sel Expansion Uplift] )
+    // MODELED.
+    MEASURE '_Measures'[Scenario New Logo] = [New Logo ARR FY2025] * ( 1 + [Sel New Logo Growth] )
+    // FY2026 ending ARR. Not capped by the capacity schedule. MODELED.
+    MEASURE '_Measures'[Scenario Ending ARR] = [Beginning ARR] + [Scenario Churn] + [Scenario Expansion] + [Scenario New Logo] + [Sel FX]
+    // MODELED.
+    MEASURE '_Measures'[Scenario ARR Growth] = DIVIDE ( [Scenario Ending ARR], [Beginning ARR] ) - 1
+    // Surplus / (shortfall) against the $581M floor. MODELED.
+    MEASURE '_Measures'[vs Original Guidance Low] = [Scenario Ending ARR] - [Guidance Low]
+    // Surplus / (shortfall) against the $562M floor. MODELED.
+    MEASURE '_Measures'[vs Revised Guidance Low] = [Scenario Ending ARR] - [Revised Guidance Low]
+    // MODELED.
+    MEASURE '_Measures'[Clears Original Guidance] = IF ( [Scenario Ending ARR] >= [Guidance Low], "Yes", "No" )
+
+    // ---------- 05 FY2025 growth ----------
+    // Share of FY2025 gross new ARR from existing partners. DERIVED.
+    MEASURE '_Measures'[Expansion Share of Gross New] = CALCULATE ( SUM ( 'Gross New Split'[Share] ), 'Gross New Split'[Motion] = "Expansion & upsell" )
+    // DERIVED.
+    MEASURE '_Measures'[New Logo Share of Gross New] = CALCULATE ( SUM ( 'Gross New Split'[Share] ), 'Gross New Split'[Motion] = "New logo" )
+    // Share of FY2025 ARR growth from partners above $50K. DERIVED.
+    MEASURE '_Measures'[Growth Share Above 50K] = CALCULATE ( SUM ( 'Growth by Tier'[Share] ), 'Growth by Tier'[Cohort] = "Partners >$50K" )
+
+    // ---------- 06 Plot ----------
+    MEASURE '_Measures'[Bridge Value FY2025] = SUM ( 'ARR Bridge FY2025'[Value] )
+    // FY2026 bridge for the selected scenario.
+    MEASURE '_Measures'[Bridge Value FY2026] = VAR CurrentScenario = [Sel Scenario] RETURN CALCULATE ( SUM ( 'ARR Bridge FY2026'[Value] ), 'ARR Bridge FY2026'[Scenario] = CurrentScenario )
+    MEASURE '_Measures'[Gross New Value] = SUM ( 'Gross New Split'[Value] )
+    MEASURE '_Measures'[Growth Contribution] = SUM ( 'Growth by Tier'[Value] )
+    // DERIVED: reported total ARR x reported cohort share.
+    MEASURE '_Measures'[ARR Above 50K] = CALCULATE ( SUM ( 'Partner Mix'[ARR] ), 'Partner Mix'[Cohort] = "Partners >$50K" )
+    // DERIVED.
+    MEASURE '_Measures'[ARR Long Tail] = CALCULATE ( SUM ( 'Partner Mix'[ARR] ), 'Partner Mix'[Cohort] = "Long tail <$50K" )
+    // DERIVED.
+    MEASURE '_Measures'[Long Tail ARR Change] = SUM ( 'Long Tail Change'[Value] )
+    // Shown for all three scenarios regardless of the slicer.
+    MEASURE '_Measures'[Required by Scenario] = CALCULATE ( SUM ( 'Capacity by Scenario'[Value] ), 'Capacity by Scenario'[Metric] = "Required gross new ARR" )
+    // Shown for all three scenarios regardless of the slicer.
+    MEASURE '_Measures'[Capacity by Scenario Value] = CALCULATE ( SUM ( 'Capacity by Scenario'[Value] ), 'Capacity by Scenario'[Metric] = "Modeled capacity" )
+    MEASURE '_Measures'[Coverage All Scenarios] = SUM ( 'Coverage by Scenario'[Coverage] )
+    MEASURE '_Measures'[Ramped FTE] = SUM ( 'Capacity Monthly'[RampedEquivalentFTE] )
+    MEASURE '_Measures'[Ending Headcount] = SUM ( 'Capacity Monthly'[EndingHeadcount] )
+    MEASURE '_Measures'[Sensitivity Ending ARR] = SUM ( Sensitivity[EndingARR] )
+    MEASURE '_Measures'[Assumption Value] = SUM ( Assumptions[Value] )
+    // Gauge minimum.
+    MEASURE '_Measures'[Zero] = 0
+    // Gauge maximum, 10% above the requirement so the target marker sits inside the arc.
+    MEASURE '_Measures'[Gauge Max] = [Required Gross New ARR] * 1.1
+    // Reacts to the scenario slicer.
+    MEASURE '_Measures'[Plan vs Capacity Value] =
+        SWITCH ( SELECTEDVALUE ( 'Plan Comparison'[Item] ),
+            "Required gross new ARR", [Required Gross New ARR],
+            "Modeled capacity", [Modeled Capacity] )
+
+    // ---------- 08 Colour ----------
+    // Conditional fill: navy for the requirement, blue for capacity.
+    MEASURE '_Measures'[Plan vs Capacity Colour] = IF ( SELECTEDVALUE ( 'Plan Comparison'[Item] ) = "Required gross new ARR", "#123B66", "#1F6FCB" )
+    // Conditional fill: red where the long tail shrinks.
+    MEASURE '_Measures'[Long Tail Colour] = IF ( [Long Tail ARR Change] < 0, "#C0392B", "#1F6FCB" )
+    // Conditional fill: red where capacity fails to cover the plan.
+    MEASURE '_Measures'[Coverage Colour] = IF ( [Coverage All Scenarios] < 1, "#C0392B", "#1F6FCB" )
+    // Navy totals, red decreases, blue increases.
+    MEASURE '_Measures'[Bridge FY2025 Colour] =
+        SWITCH ( SELECTEDVALUE ( 'ARR Bridge FY2025'[Type] ),
+            "Total", "#123B66", "Decrease", "#C0392B", "#1F6FCB" )
+
+    // ---------- 07 Narrative ----------
+    // Reads back the analyst assumptions behind the selected scenario.
+    MEASURE '_Measures'[Scenario Strapline] =
+        "GRR " & FORMAT ( [Sel GRR], "0.0%" ) & "  |  new logo " & FORMAT ( [Sel New Logo Growth], "+0%;-0%;0%" ) &
+            "  |  attainment " & FORMAT ( [Sel Attainment], "0%" ) & "  |  FX " & FORMAT ( [Sel FX], "0.0;(0.0);0.0" )
+    // Dynamic executive summary driven by the selected scenario.
+    MEASURE '_Measures'[Executive Takeaway] =
+        VAR Cov = [Capacity Coverage]
+        VAR Gap = [Capacity Gap]
+        VAR Reps = [Additional Ramped Reps]
+        RETURN
+            "Reaching the $" & FORMAT ( [Guidance Mid], "0.0" ) & "M guidance midpoint requires $" &
+            FORMAT ( [Required Gross New ARR], "0.0" ) & "M of gross new ARR, while the modeled hiring plan fields $" &
+            FORMAT ( [Modeled Capacity], "0.0" ) & "M. That is " & FORMAT ( Cov, "0.0%" ) & " coverage and a $" &
+            FORMAT ( ABS ( Gap ), "0.0" ) & "M gap — about " & FORMAT ( ABS ( Reps ), "0" ) &
+            " additional ramped reps in place on 1 January, or a " & FORMAT ( [Productivity Uplift Required], "0.0%" ) &
+            " productivity lift on the reps already there. Capacity, rep count, retention and FX are modeled analyst assumptions, not reported N-able facts."
+
+EVALUATE
+ROW (
+    "Scenario", [Sel Scenario],
+    "Required gross new ARR", [Required Gross New ARR],
+    "Modeled capacity", [Modeled Capacity],
+    "Capacity coverage", [Capacity Coverage],
+    "Additional ramped reps", [Additional Ramped Reps],
+    "FY2026 ending ARR", [Scenario Ending ARR]
+)
+
+// Expected on Base: 97.77 required | 89.04 capacity | 91.07% coverage
+//                   27.59 reps     | 580.36 ending ARR
+
+// ======================================================================
+// FORMAT STRINGS
+// ======================================================================
+//   Sel Scenario                        (text - leave General)
+//   Sel GRR                             0.0%;(0.0%);0.0%
+//   Sel New Logo Growth                 0.0%;(0.0%);0.0%
+//   Sel Expansion Uplift                0.0%;(0.0%);0.0%
+//   Sel FX                              #,##0.0;(#,##0.0);0.0
+//   Sel Attainment                      0.0%;(0.0%);0.0%
+//   Beginning ARR                       #,##0.0;(#,##0.0);0.0
+//   Guidance Low                        #,##0.0;(#,##0.0);0.0
+//   Guidance High                       #,##0.0;(#,##0.0);0.0
+//   Guidance Mid                        #,##0.0;(#,##0.0);0.0
+//   Revised Guidance Low                #,##0.0;(#,##0.0);0.0
+//   Expansion Rate FY2025               0.0%;(0.0%);0.0%
+//   New Logo ARR FY2025                 #,##0.0;(#,##0.0);0.0
+//   Gross New ARR FY2025                #,##0.0;(#,##0.0);0.0
+//   Quota per Ramped QCR                0.000
+//   Required Pipeline                   #,##0.0;(#,##0.0);0.0
+//   Avg Ramped FTE                      #,##0.0;(#,##0.0);0.0
+//   Productivity per Ramped QCR         0.000
+//   Required Gross New ARR              #,##0.0;(#,##0.0);0.0
+//   Modeled Capacity                    #,##0.0;(#,##0.0);0.0
+//   Capacity Gap                        #,##0.0;(#,##0.0);0.0
+//   Capacity Coverage                   0.0%;(0.0%);0.0%
+//   Required QCR Years                  #,##0.0;(#,##0.0);0.0
+//   Additional Ramped Reps              #,##0.0;(#,##0.0);0.0
+//   Productivity Uplift Required        0.0%;(0.0%);0.0%
+//   Scenario Churn                      #,##0.0;(#,##0.0);0.0
+//   Scenario Expansion                  #,##0.0;(#,##0.0);0.0
+//   Scenario New Logo                   #,##0.0;(#,##0.0);0.0
+//   Scenario Ending ARR                 #,##0.0;(#,##0.0);0.0
+//   Scenario ARR Growth                 0.0%;(0.0%);0.0%
+//   vs Original Guidance Low            #,##0.0;(#,##0.0);0.0
+//   vs Revised Guidance Low             #,##0.0;(#,##0.0);0.0
+//   Clears Original Guidance            (text - leave General)
+//   Expansion Share of Gross New        0.0%;(0.0%);0.0%
+//   New Logo Share of Gross New         0.0%;(0.0%);0.0%
+//   Growth Share Above 50K              0.0%;(0.0%);0.0%
+//   Bridge Value FY2025                 #,##0.0;(#,##0.0);0.0
+//   Bridge Value FY2026                 #,##0.0;(#,##0.0);0.0
+//   Gross New Value                     #,##0.0;(#,##0.0);0.0
+//   Growth Contribution                 #,##0.0;(#,##0.0);0.0
+//   ARR Above 50K                       #,##0.0;(#,##0.0);0.0
+//   ARR Long Tail                       #,##0.0;(#,##0.0);0.0
+//   Long Tail ARR Change                #,##0.0;(#,##0.0);0.0
+//   Required by Scenario                #,##0.0;(#,##0.0);0.0
+//   Capacity by Scenario Value          #,##0.0;(#,##0.0);0.0
+//   Coverage All Scenarios              0.0%;(0.0%);0.0%
+//   Ramped FTE                          #,##0.0;(#,##0.0);0.0
+//   Ending Headcount                    #,##0.0;(#,##0.0);0.0
+//   Sensitivity Ending ARR              #,##0.0;(#,##0.0);0.0
+//   Assumption Value                    #,##0.0;(#,##0.0);0.0
+//   Zero                                #,##0.0;(#,##0.0);0.0
+//   Gauge Max                           #,##0.0;(#,##0.0);0.0
+//   Plan vs Capacity Value              #,##0.0;(#,##0.0);0.0
+//   Plan vs Capacity Colour             (text - leave General)
+//   Long Tail Colour                    (text - leave General)
+//   Coverage Colour                     (text - leave General)
+//   Bridge FY2025 Colour                (text - leave General)
+//   Scenario Strapline                  (text - leave General)
+//   Executive Takeaway                  (text - leave General)
