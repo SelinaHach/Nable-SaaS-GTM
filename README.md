@@ -25,19 +25,13 @@ On 6 Aug 2026 N-able cut FY2026 ARR guidance to **$562–565M**.
 The FY2025 ARR bridge, the requirement-versus-capacity comparison, coverage across three
 scenarios, and a takeaway that rewrites itself from the live measures.
 
-![Executive Summary](images/01-executive-summary.png)
-
 ### 2 · ARR Growth & Partner Mix
 Where FY2025 growth actually came from: expansion versus new logo, and the concentration
 of growth in partners above $50K.
 
-![ARR Growth and Partner Mix](images/02-arr-growth-partner-mix.png)
-
 ### 3 · GTM Capacity & Scenarios
 The scenario switch, the monthly ramp schedule behind the capacity number, the assumption
 register, and a 5×5 sensitivity grid on ending ARR.
-
-![GTM Capacity and Scenarios](images/03-gtm-capacity-scenarios.png)
 
 The slicer is a disconnected table read by `SELECTEDVALUE`, which is what replaces the
 Excel scenario switch at `Assumptions!B6` — that cell stops being interactive once the
@@ -45,7 +39,6 @@ workbook is imported. Same page, downside and upside selected:
 
 | Downside — 74.8% coverage | Upside — 113.8% coverage |
 |---|---|
-| ![Downside](images/04-scenario-downside.png) | ![Upside](images/05-scenario-upside.png) |
 
 ---
 
