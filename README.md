@@ -10,8 +10,8 @@ on 1 January. The base case lands at **$580.4M**, about **$0.6M below the guidan
 
 On 6 Aug 2026 N-able cut FY2026 ARR guidance to **$562–565M**.
 
-**[Open the live report ›](https://app.powerbi.com/groups/me/reports/2949935e-0b27-49cf-8515-8e41da89c30b/p2arrgrowth00000000?experience=power-bi)**
- · Power BI Service, sign-in required. Screenshots below if you would rather not sign in.
+All three pages are below. The `.pbix` in this repo opens directly in Power BI Desktop —
+the model is imported, so nothing needs to refresh.
 
 > The capacity conclusion is a **modeled** result built on analyst assumptions, not a
 > forecast and not something N-able published. See [Reported / Derived / Modeled](#reported--derived--modeled)
@@ -25,13 +25,19 @@ On 6 Aug 2026 N-able cut FY2026 ARR guidance to **$562–565M**.
 The FY2025 ARR bridge, the requirement-versus-capacity comparison, coverage across three
 scenarios, and a takeaway that rewrites itself from the live measures.
 
+![Executive Summary](images/01-executive-summary.png)
+
 ### 2 · ARR Growth & Partner Mix
 Where FY2025 growth actually came from: expansion versus new logo, and the concentration
 of growth in partners above $50K.
 
+![ARR Growth and Partner Mix](images/02-arr-growth-partner-mix.png)
+
 ### 3 · GTM Capacity & Scenarios
 The scenario switch, the monthly ramp schedule behind the capacity number, the assumption
 register, and a 5×5 sensitivity grid on ending ARR.
+
+![GTM Capacity and Scenarios](images/03-gtm-capacity-scenarios.png)
 
 The slicer is a disconnected table read by `SELECTEDVALUE`, which is what replaces the
 Excel scenario switch at `Assumptions!B6` — that cell stops being interactive once the
@@ -39,6 +45,7 @@ workbook is imported. Same page, downside and upside selected:
 
 | Downside — 74.8% coverage | Upside — 113.8% coverage |
 |---|---|
+| ![Downside](images/04-scenario-downside.png) | ![Upside](images/05-scenario-upside.png) |
 
 ---
 
